@@ -1,13 +1,13 @@
 import os
-import pandas as pd
-from pandas import DataFrame
-import seaborn as sns
-import glob
 import re
-import nltk
+
+import numpy as np
+import pandas as pd
+
 from nltk.corpus import wordnet, stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+from nltk.util import ngrams
 from nltk import pos_tag
 from unidecode import unidecode
 from sklearn.feature_extraction.text import CountVectorizer
@@ -28,7 +28,8 @@ def get_contents(file_paths) -> list:
 
     return file_names, contents
 
-def count_word_freq(text_sample, words) -> DataFrame:
+
+def count_word_freq(text_sample, words) -> pd.DataFrame:
     # Create vector with count of words in the text sample
     vectorizer = CountVectorizer(stop_words='english')
     X = vectorizer.fit_transform([text_sample])
@@ -42,6 +43,7 @@ def count_word_freq(text_sample, words) -> DataFrame:
     df_words = df_bow[words_in_common]
     return df_words
 
+
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith("J"):
         return wordnet.ADJ
@@ -54,14 +56,16 @@ def get_wordnet_pos(treebank_tag):
     else:
         return ""
 
+
 def penn_to_wn(tag):
     return get_wordnet_pos(tag)
 
-def lemmatize(corpus):
+
+def preprocess_text(corpus):
     lemmatizer = WordNetLemmatizer()
     preprocessed_corpus = []
 
-    for i, document in enumerate(corpus):
+    for _, document in enumerate(corpus):
         remove_https = re.sub(r"http\S+", "", document)
         remove_com = re.sub(r"\ [A-Za-a]*\.com", " ", remove_https)
         remove_numbers_punctuations = re.sub(r"[^a-zA-Z]+", " ", remove_com)
@@ -77,3 +81,59 @@ def lemmatize(corpus):
 
         preprocessed_corpus.append(" ".join(list_of_lemmas))
     return preprocessed_corpus
+
+
+def read_file(file_name):
+    """
+    This function will read the text files passed & return the list
+    """
+    with open(file_name, "r", encoding="utf-8") as f:
+        words = f.read().replace("\n", " ")
+
+    return words
+
+
+def add_labels_to_df(majority_share=0.7):
+    df = pd.read_csv("data/cleaned_data/applicants.csv", dtype={'ID': object})  
+
+    mostly_women = df["Female"] >= (df["Apps Received"] - df["Unknown_Gender"]) * majority_share
+    mostly_men = df["Male"] >= (df["Apps Received"] - df["Unknown_Gender"]) * majority_share
+
+    labels = []
+    label_ints = []
+    for i in range(len(df)):
+        if mostly_women[i]:
+            label = "W"
+            label_int = 1
+        elif mostly_men[i]:
+            label = "M"
+            label_int = 2
+        else:
+            label = "N"
+            label_int = 0
+        labels.append(label)
+        label_ints.append(label_int)
+    
+    majority_percent = majority_share * 10
+    minority_percent = 100 - majority_percent
+    df[f"Label {majority_percent}/{minority_percent}"] = labels
+    df[f"Numeric label {majority_percent}/{minority_percent}"] = label_ints
+
+
+def extract_ngrams(df):
+    bigrams = []
+    trigrams = []
+    cleaned_texts = list(df["Cleaned text"])
+    for text in cleaned_texts:
+        bigrams.append(list(ngrams(text.split(), 2)))
+        trigrams.append(list(ngrams(text.split(), 3)))
+
+
+def get_n_most_important_words(weights, vocabulary, n):
+    indices = np.argpartition(weights, len(weights) - n)[-n:]
+    min_elements = weights[indices]
+    min_elements_order = np.argsort(min_elements)
+    ordered_indices = indices[min_elements_order]
+    words = [vocabulary[i] for i in ordered_indices]
+
+    return words
