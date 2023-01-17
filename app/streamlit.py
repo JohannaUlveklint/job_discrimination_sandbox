@@ -65,52 +65,38 @@ with models:
     class_col, reg_col = st.columns(2)
 
     # Classification model
-    class_col.header("Results from classification model")
-    warnings.simplefilter("ignore")
-    # df = pd.read_csv("../data/cleaned_data/bulletins_labels_share_content.csv")
-    df = get_data("../data/cleaned_data/bulletins_w_labels_and_content.csv")
+    class_col.subheader("Results from classification model")
+    # https://www.youtube.com/watch?v=A4K6D_gx2Iw&ab_channel=sentdex
+    CATEGORIES = ["neutral", "female", "male"]
+
+    def prepare(filepath):
+        # Do something with the .txt-file
+        return None
+
+    @st.cache
+    def get_model():
+        return "Model saved somewhere"
     
-
-    corpus = list(df["Cleaned text"])
-    google_model = gensim.models.KeyedVectors.load_word2vec_format("C:/Users/Johanna/Downloads/archive_word_vectors/GoogleNews-vectors-negative300.bin.gz", binary=True)
-    
-    tfidf_vectorizer = TfidfVectorizer()
-    tfidf_vectorizer.fit_transform(corpus)
-
-    vocabulary = tfidf_vectorizer.get_feature_names_out()
-    documents_embeddings = []
-    documents_scaled_embeddings = []
-    for doc in corpus:
-        word_embeddings = []
-        scaled_embeddings  = []
-        doc_list = doc.split()
-    for word in doc_list:
-        if word in google_model.key_to_index.keys():
-            embedding = google_model[word]
-            word_embeddings.append(embedding)
-            index = np.where(vocabulary == word)[0]
-            try:
-                scaled_embeddings.append(embedding * tfidf_vectorizer.idf_[index])
-            except ValueError:
-                pass
-    documents_embeddings.append(word_embeddings)
-    documents_scaled_embeddings.append(scaled_embeddings)
-
-    df["Scaled embeddings"] = documents_scaled_embeddings
-    scaled_doc_vectors = [np.average(doc, axis=0) for doc in df["Scaled embeddings"]]
-    X_scaled = np.array(scaled_doc_vectors)
-    y = df["Numeric label 70/30"]
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, random_state=1)
-
-    clf = LogisticRegression(C=8.091237124889124, class_weight="balanced")
-    clf.fit(X_train, y_train)
-
+    model = get_model()
+    # prediction = model.predict([prepare(string_data)])  # Maybe not string_data, maybe not in a list
+    # prediction = CATEGORIES[int(prediction[0][0])]
+    pred_class = "female"
+    class_col.write(f"The classification model predicts that the distribution of applicants will be mostly \033[1m{pred_class}\033[0m.")
 
     # Regression model
-    reg_col.header("Results from regression model")
+    reg_col.subheader("Results from regression model")
+    pred_reg = 0.44
+    reg_col.write(f"The regression model predicts that \033[1m{round((1 - pred_reg) * 100, 1)}% women\033[0m and \033[1m{pred_reg * 100}% men\033[0m will apply for this job.")
 
 
 with interpretation:
     col_1, col_2, col_3 = st.columns(3)
-    col_1.subheader("Interpretated result:")
-    col_1.markdown("* **The models suggests that more men will apply for this job**")
+    col_2.subheader("Interpretated result:")
+    if pred_class == "female":
+        col_2.markdown(f"* The classification model predicts that the distribution will be mostly \033[1m{pred_class}\033[0m.")
+        col_2.markdown(f"* The regression model predicts that {round((1 - pred_reg) * 100, 1)} wommen will apply for this job.")
+        col_2.markdown(f"* Due to a low share of jobs that mostly women applies to, the numbers from the regression model is probably misleading.")
+        col_2.markdown(f"* More correct numbers would be that over 70% of the applicants will be women.")
+    else:
+        col_2.markdown(f"* The models predicts that the applicants for this job will be mostly {pred_class}, "\
+        f"{round((1 - pred_reg) * 100, 1)}% women and {pred_reg * 100}% men.")
