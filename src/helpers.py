@@ -83,6 +83,26 @@ def preprocess_text(corpus):
     return preprocessed_corpus
 
 
+# Den här är för att predicta en text, ska till finals
+def preprocess_document(doc):
+    lemmatizer = WordNetLemmatizer()
+
+    remove_https = re.sub(r"http\S+", "", doc)
+    remove_com = re.sub(r"\ [A-Za-a]*\.com", " ", remove_https)
+    remove_numbers_punctuations = re.sub(r"[^a-zA-Z]+", " ", remove_com)
+    pattern = re.compile(r"\s+")
+    remove_extra_whitespaces = re.sub(pattern, " ", remove_numbers_punctuations)
+    only_ascii = unidecode(remove_extra_whitespaces)
+    doc = only_ascii.lower()
+
+    list_of_tokens = word_tokenize(doc)
+    list_of_tokens_pos = pos_tag(list_of_tokens)
+    list_of_tokens_wn_pos = [(token[0], penn_to_wn(token[1])) for token in list_of_tokens_pos if token[0] not in stopwords.words("english")]
+    list_of_lemmas = [lemmatizer.lemmatize(token[0], token[1]) if token[1] != "" else lemmatizer.lemmatize(token[0]) for token in list_of_tokens_wn_pos]
+
+    return list_of_lemmas
+
+
 def read_file(file_name):
     """
     This function will read the text files passed & return the list
