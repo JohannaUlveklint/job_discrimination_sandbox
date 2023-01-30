@@ -1,16 +1,16 @@
 import os
 import re
 
+import gensim
 import numpy as np
 import pandas as pd
-
 from nltk.corpus import wordnet, stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from nltk.util import ngrams
 from nltk import pos_tag
 from unidecode import unidecode
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 
 def get_contents(file_paths) -> list:
@@ -83,6 +83,26 @@ def preprocess_text(corpus):
     return preprocessed_corpus
 
 
+# Den här är för att predicta en text, ska till finals
+def preprocess_document(doc):
+    lemmatizer = WordNetLemmatizer()
+
+    remove_https = re.sub(r"http\S+", "", doc)
+    remove_com = re.sub(r"\ [A-Za-a]*\.com", " ", remove_https)
+    remove_numbers_punctuations = re.sub(r"[^a-zA-Z]+", " ", remove_com)
+    pattern = re.compile(r"\s+")
+    remove_extra_whitespaces = re.sub(pattern, " ", remove_numbers_punctuations)
+    only_ascii = unidecode(remove_extra_whitespaces)
+    doc = only_ascii.lower()
+
+    list_of_tokens = word_tokenize(doc)
+    list_of_tokens_pos = pos_tag(list_of_tokens)
+    list_of_tokens_wn_pos = [(token[0], penn_to_wn(token[1])) for token in list_of_tokens_pos if token[0] not in stopwords.words("english")]
+    list_of_lemmas = [lemmatizer.lemmatize(token[0], token[1]) if token[1] != "" else lemmatizer.lemmatize(token[0]) for token in list_of_tokens_wn_pos]
+
+    return list_of_lemmas
+
+
 def read_file(file_name):
     """
     This function will read the text files passed & return the list
@@ -137,3 +157,64 @@ def get_n_most_important_words(weights, vocabulary, n):
     words = [vocabulary[i] for i in ordered_indices]
 
     return words
+
+
+def corpus_to_doc_vectors():
+    df = pd.read_csv("data/cleaned_data/bulletins_labels_share_content.csv", dtype={'ID': object})
+    corpus = list(df["Cleaned text"])
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_vectorizer.fit_transform(corpus)
+    google_model = gensim.models.KeyedVectors.load_word2vec_format("c:/Users/britt/Downloads/GoogleNews-vectors-negative300.bin.gz", binary=True)
+
+    vocabulary = tfidf_vectorizer.get_feature_names_out()
+    documents_embeddings = []
+    documents_scaled_embeddings = []
+    for doc in corpus:
+        word_embeddings = []
+        scaled_embeddings  = []
+        doc_list = doc.split()
+        for word in doc_list:
+            if word in google_model.key_to_index.keys():
+                embedding = google_model[word]
+                word_embeddings.append(embedding)
+                index = np.where(vocabulary == word)[0]
+                try:
+                    scaled_embeddings.append(embedding * tfidf_vectorizer.idf_[index])
+                except ValueError:
+                    pass
+        documents_embeddings.append(word_embeddings)
+        documents_scaled_embeddings.append(scaled_embeddings)
+
+        doc_vectors = [np.average(doc, axis=0) for doc in documents_embeddings]
+        scaled_doc_vectors = [np.average(doc, axis=0) for doc in documents_scaled_embeddings]
+
+        return doc_vectors
+
+
+def job_ad_to_doc_vector(file_name):
+    df = pd.read_csv("data/cleaned_data/bulletins_labels_share_content.csv", dtype={'ID': object})
+    corpus = list(df["Cleaned text"])
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_vectorizer.fit_transform(corpus)
+    google_model = gensim.models.KeyedVectors.load_word2vec_format("c:/Users/britt/Downloads/GoogleNews-vectors-negative300.bin.gz", binary=True)
+
+    with open(f"data/original_data/job_bulletins/{file_name}", "r", encoding="utf-8") as f:
+        application = f.read()
+
+    text = preprocess_document(application)
+    regressor_vocabulary = tfidf_vectorizer.get_feature_names_out()
+
+    scaled_embeddings  = []
+    doc_list = text[0].split()
+    for word in doc_list:
+        if word in google_model.key_to_index.keys():
+            embedding = google_model[word]
+            index = np.where(regressor_vocabulary == word)[0]
+            try:
+                scaled_embeddings.append(embedding * tfidf_vectorizer.idf_[index])
+            except ValueError:
+                pass
+
+    doc_vector = np.average(scaled_embeddings, axis=0)
+
+    return doc_vector
