@@ -239,6 +239,7 @@ def job_ad_to_doc_vector_filename(file_name):
 
 
 def job_ad_to_doc_vector_text(text):
+    print("Creating document embeddings from corpus...")
     df = pd.read_csv("data/cleaned_data/bulletins_labels_share_content.csv", dtype={'ID': object})
     corpus = list(df["Cleaned text"])
     tfidf_vectorizer = TfidfVectorizer()
@@ -246,18 +247,27 @@ def job_ad_to_doc_vector_text(text):
     google_model = gensim.models.KeyedVectors.load_word2vec_format("c:/Users/britt/Downloads/GoogleNews-vectors-negative300.bin.gz", binary=True)
 
     regressor_vocabulary = tfidf_vectorizer.get_feature_names_out()
+    #print(regressor_vocabulary)
 
     scaled_embeddings  = []
-    doc_list = text[0].split()
-    for word in doc_list:
+    # print("Splitting text into list...")
+    # doc_list = text[0].split()
+    # print(doc_list)
+    # print("Iterating over words in doc_list...")
+    #for word in doc_list:
+    for word in text:
         if word in google_model.key_to_index.keys():
             embedding = google_model[word]
+            # print(embedding)
             index = np.where(regressor_vocabulary == word)[0]
+            # print(index)
             try:
                 scaled_embeddings.append(embedding * tfidf_vectorizer.idf_[index])
             except ValueError:
                 pass
 
+    # print(scaled_embeddings)
+    print("Calculating mean of word embeddings...")
     doc_vector = np.average(scaled_embeddings, axis=0)
 
     return doc_vector
