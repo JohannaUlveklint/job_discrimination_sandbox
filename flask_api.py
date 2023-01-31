@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import json
+
 from flask import Flask, request, jsonify
+
+import src.helpers as helpers
 
 app = Flask(__name__)
 
@@ -16,62 +19,21 @@ def return_prediction():
   
         return jsonify(data)
 
-# @app.route('/', methods=['GET'])
-# def query_records():
-#     name = request.args.get('name')
-#     print(name)
-#     # with open('/tmp/data.txt', 'r') as f:
-#     #     data = f.read()
-#     #     records = json.loads(data)
-#     #     for record in records:
-#     #         if record['name'] == name:
-#     #             return jsonify(record)
-#     return jsonify({'error': 'data not found', 
-#                     "name": name})
 
-# @app.route('/', methods=['PUT'])
-# def create_record():
-#     record = json.loads(request.data)
-#     with open('/tmp/data.txt', 'r') as f:
-#         data = f.read()
-#     if not data:
-#         records = [record]
-#     else:
-#         records = json.loads(data)
-#         records.append(record)
-#     with open('/tmp/data.txt', 'w') as f:
-#         f.write(json.dumps(records, indent=2))
-#     return jsonify(record)
-
-@app.route('/<string:file_name>', methods=['POST'])
-def post_job_ad(file_name):
-    #text = json.loads(request.data)
-    #new_records = []
-    with open(f'data/cleaned_data/Job_Bulletins/unlabeled/{file_name}', 'r') as f:
-        text = f.read()
-        #records = json.loads(data)
-    for r in records:
-        if r['name'] == record['name']:
-            r['email'] = record['email']
-        new_records.append(r)
-    with open('/tmp/data.txt', 'w') as f:
-        f.write(json.dumps(new_records, indent=2))
-    return jsonify(record)
+@app.route('/upload_json', methods=['POST'])
+def post_job_ad():
+    ad_json = json.loads(request.data)
+    text = ad_json["Text"]
+    cleaned_text = helpers.preprocess_document(text)
+    top_25_words = helpers.predict_important_words(cleaned_text)
+    doc_vector = helpers.job_ad_to_doc_vector_text(cleaned_text)
+    predicted_label, pred_probas = helpers.predict_label(doc_vector)
+    predicted_distribution = helpers.predict_distribution(doc_vector)
+    result = helpers.create_result_dict(ad_json["File name"], ad_json["Id"], ad_json["Title"], top_25_words, 
+                                        predicted_label, pred_probas, predicted_distribution)
     
-# @app.route('/', methods=['DELETE'])
-# def delte_record():
-#     record = json.loads(request.data)
-#     new_records = []
-#     with open('/tmp/data.txt', 'r') as f:
-#         data = f.read()
-#         records = json.loads(data)
-#         for r in records:
-#             if r['name'] == record['name']:
-#                 continue
-#             new_records.append(r)
-#     with open('/tmp/data.txt', 'w') as f:
-#         f.write(json.dumps(new_records, indent=2))
-#     return jsonify(record)
+    return jsonify(result)
+    
 
 if __name__ == '__main__':
     app.run(debug=True)
