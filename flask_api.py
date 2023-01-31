@@ -3,8 +3,11 @@
 import json
 
 from flask import Flask, request, jsonify
+import gensim
 
 import src.helpers as helpers
+
+#google_model = gensim.models.KeyedVectors.load_word2vec_format("c:/Users/britt/Downloads/GoogleNews-vectors-negative300.bin.gz", binary=True)
 
 app = Flask(__name__)
 
