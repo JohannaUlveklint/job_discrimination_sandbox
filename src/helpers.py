@@ -4,6 +4,7 @@ import re
 import gensim
 import numpy as np
 import pandas as pd
+import pickle
 from nltk.corpus import wordnet, stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -149,14 +150,31 @@ def extract_ngrams(df):
         trigrams.append(list(ngrams(text.split(), 3)))
 
 
-def get_n_most_important_words(weights, vocabulary, n):
+def get_n_most_important_words_clf(weights, vocabulary, n):
     indices = np.argpartition(weights, len(weights) - n)[-n:]
     min_elements = weights[indices]
     min_elements_order = np.argsort(min_elements)
     ordered_indices = indices[min_elements_order]
     words = [vocabulary[i] for i in ordered_indices]
+    weights = [round(weights[i], 5) for i in ordered_indices]
 
-    return words
+    return words[::-1], weights[::-1]
+
+
+def get_25_most_important_words_single_text(text, label, clf_vocabulary, clf_weights):
+    vocabulary_text = list(set(text))
+    text_weights = []
+    words, weights = get_n_most_important_words_clf(clf_weights[label], clf_vocabulary, len(clf_vocabulary))
+    weights_dict = dict(zip(words, weights))
+    for word in vocabulary_text:
+        try:
+            text_weights.append((word, weights_dict[word]))
+        except KeyError:
+            pass
+    
+    text_weights.sort(key=lambda x: x[1], reverse=True)
+    
+    return text_weights[:25]
 
 
 def corpus_to_doc_vectors():
@@ -191,7 +209,7 @@ def corpus_to_doc_vectors():
         return doc_vectors
 
 
-def job_ad_to_doc_vector(file_name):
+def job_ad_to_doc_vector_filename(file_name):
     df = pd.read_csv("data/cleaned_data/bulletins_labels_share_content.csv", dtype={'ID': object})
     corpus = list(df["Cleaned text"])
     tfidf_vectorizer = TfidfVectorizer()
@@ -218,3 +236,101 @@ def job_ad_to_doc_vector(file_name):
     doc_vector = np.average(scaled_embeddings, axis=0)
 
     return doc_vector
+
+
+def job_ad_to_doc_vector_text(text):
+    print("Creating document embeddings from corpus...")
+    df = pd.read_csv("data/cleaned_data/bulletins_labels_share_content.csv", dtype={'ID': object})
+    corpus = list(df["Cleaned text"])
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_vectorizer.fit_transform(corpus)
+    google_model = gensim.models.KeyedVectors.load_word2vec_format("c:/Users/britt/Downloads/GoogleNews-vectors-negative300.bin.gz", binary=True)
+
+    regressor_vocabulary = tfidf_vectorizer.get_feature_names_out()
+    #print(regressor_vocabulary)
+
+    scaled_embeddings  = []
+    # print("Splitting text into list...")
+    # doc_list = text[0].split()
+    # print(doc_list)
+    # print("Iterating over words in doc_list...")
+    #for word in doc_list:
+    for word in text:
+        if word in google_model.key_to_index.keys():
+            embedding = google_model[word]
+            # print(embedding)
+            index = np.where(regressor_vocabulary == word)[0]
+            # print(index)
+            try:
+                scaled_embeddings.append(embedding * tfidf_vectorizer.idf_[index])
+            except ValueError:
+                pass
+
+    # print(scaled_embeddings)
+    print("Calculating mean of word embeddings...")
+    doc_vector = np.average(scaled_embeddings, axis=0)
+
+    return doc_vector
+
+
+def predict_important_words(text):
+    with open("data/models/log_reg_tfidf.pkl", "rb") as read_file:
+        clf = pickle.load(read_file)
+
+    with open("data/vectorizers/tfidf.pkl", "rb") as read_file:
+        vectorizer = pickle.load(read_file)
+
+    clf_weights = clf.coef_
+    clf_vocabulary = vectorizer.get_feature_names_out()
+
+    vectorized_text = vectorizer.transform(text)
+    prediction = clf.predict(vectorized_text)
+
+    predicted_label = prediction[0]
+    top_25_words = get_25_most_important_words_single_text(text, predicted_label, clf_vocabulary, clf_weights)
+
+    return top_25_words
+
+
+def predict_label(doc_vector):
+    with open("data/models/log_reg_scaled_emb.pkl", "rb") as read_file:
+        clf = pickle.load(read_file)
+
+    predicted_label = clf.predict(doc_vector.reshape(1, -1))[0]
+    pred_probas = clf.predict_proba(doc_vector.reshape(1, -1))
+
+    return predicted_label, pred_probas
+
+
+def predict_distribution(doc_vector):
+    with open("data/models/cat_boost_regr.pkl", "rb") as read_file:
+        regressor = pickle.load(read_file)
+
+    cat_boost_prediction = regressor.predict(doc_vector)
+
+    return cat_boost_prediction
+
+
+def create_result_dict(file_name, id, title, words, predicted_label, pred_probas, distribution):
+    label_to_word = {
+        0: ("Neutral", "30-69% male/female applicants"),
+        1: ("Female", "More than 70 percent female applicants"),
+        2: ("Male", "More than 70% male applicants")
+    }
+
+    result = {
+        "File name": file_name, 
+        "Id": str(id),
+        "Title": title,
+        "Top 25 important words": words,
+        "Predicted numeric label": str(predicted_label),
+        "Predicted label word": label_to_word[predicted_label][0],
+        "Predicted label meaning": label_to_word[predicted_label][1],
+        "Probability label neutral": f"{round(pred_probas[0][0] * 100, 1)}%",
+        "Probability label female": f"{round(pred_probas[0][1] * 100, 1)}%",
+        "Probability label male": f"{round(pred_probas[0][2] * 100, 1)}%",
+        "Predicted male distribution": f"{round(distribution[0] * 100, 1)}%",
+        "Predicted female distribution": f"{round(distribution[1] * 100, 1)}%"
+    }
+
+    return result
