@@ -12,17 +12,6 @@ import src.helpers as helpers
 app = Flask(__name__)
 
 
-@app.route('/return_json', methods = ['GET'])
-def return_prediction():
-  if(request.method == 'GET'):
-        data = {
-            "Modules" : 15,
-            "Subject" : "Data Structures and Algorithms",
-        }
-  
-        return jsonify(data)
-
-
 @app.route('/upload_json', methods=['POST'])
 def post_job_ad():
     ad_json = json.loads(request.data)
